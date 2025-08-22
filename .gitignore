@@ -1,0 +1,13 @@
+# Environment
+.env
+.venv/
+bin/
+
+# Build files
+dist/
+build/
+BeletDownloader.spec
+
+# Linter
+pyproject.toml
+setup.cfg
