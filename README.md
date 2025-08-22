@@ -1,10 +1,3 @@
-pyinstaller downloader.py --onefile --name "BeletDownloader" --add-binary "bin/aria2c.exe;bin" --add-binary "bin/ffmpeg.exe;bin"
-
-https://www.gyan.dev/ffmpeg/builds/
-https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-2025-08-20-git-4d7c609be3-essentials_build.7z
-
-https://github.com/aria2/aria2/releases/
-
 # Belet.tm Video Downloader
 
 A robust Python script to download videos from the Belet.tm streaming platform. It automates the authentication process and handles the complex task of downloading multi-stream content (all available video, audio, and subtitle tracks) into a single file.
@@ -42,18 +35,14 @@ You need to have `FFmpeg` and `aria2c` installed on your system. These are exter
 1.  **Clone the Repository**:
 
     ```
-    git clone [https://github.com/your-username/your-repo.git](https://github.com/your-username/your-repo.git)
-    cd your-repo
-
-
+    git clone https://github.com/DowranRowshenow/belet_downloader.git
+    cd belet_downloader
     ```
 
 2.  **Install Python Dependencies**:
 
     ```
     pip install -r requirements.txt
-
-
     ```
 
     *(Create a `requirements.txt` file by running `pip freeze > requirements.txt`)*
@@ -83,6 +72,18 @@ You need to have `FFmpeg` and `aria2c` installed on your system. These are exter
     * **`DNS_RESOLVE`**: Set to `True` to use the pre-defined IP addresses for Belet.tm domains.
 
     * **`ARIA2C`**: Set to `True` to enable `aria2c` as the external downloader for faster downloads.
+4.  **Install and set path**:
+
+    Install required ffmpeg.exe
+
+    ```
+    https://www.gyan.dev/ffmpeg/builds/
+    ```
+    Install required aria2c.exe
+    ```
+    https://github.com/aria2/aria2/releases/
+    ```
+
 
 ### Running the Script
 
@@ -90,8 +91,6 @@ You need to have `FFmpeg` and `aria2c` installed on your system. These are exter
 
     ```
     python downloader.py
-
-
     ```
 
     The script will guide you through the login process if `AUTHORIZATION_TOKEN` is not set or expired, and then allow you to select the video and quality.
@@ -104,19 +103,13 @@ You can create a standalone `.exe` file for easier distribution. This will bundl
 
     ```
     pip install pyinstaller
-
-
     ```
 
 2.  **Build the Executable**:
     Run the following command in your project's root directory. **Remember to replace the paths to `aria2c.exe` and `ffmpeg.exe` with their actual locations on your system.**
 
     ```
-    pyinstaller downloader.py --onefile --name "BeletDownloader" ^
-    --add-binary "C:\path\to\aria2c\aria2c.exe;." ^
-    --add-binary "C:\path\to\ffmpeg\ffmpeg.exe;."
-
-
+    pyinstaller downloader.py --onefile --name "BeletDownloader" --add-binary "bin/aria2c.exe;bin" --add-binary "bin/ffmpeg.exe;bin"
     ```
 
     * **`--onefile`**: Creates a single `.exe` file.
