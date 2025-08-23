@@ -321,7 +321,8 @@ def obtainNewToken():
         updateEnv("AUTHORIZATION_TOKEN", token)
         return token
     except requests.exceptions.RequestException as e:
-        print(f"Error obtaining token: {e}")
+        debugPrint(f"Error obtaining token: {e}")
+        login()
         return None
 
 
@@ -410,6 +411,7 @@ def getSources(video, typ=1):
     else:
         debugPrint(f"ERROR: Get Source Response Fail. Status code: {response.status_code}")
         debugPrint(f"Raw response: {response.text}")
+        obtainNewToken()
         return None
 
 
