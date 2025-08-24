@@ -1,10 +1,12 @@
 import os
+import sys
+import yt_dlp
 import requests
 import urllib3
-import yt_dlp
+
+# from urllib.parse import urlparse
 from dotenv import load_dotenv
 from http.cookies import SimpleCookie
-import sys
 
 
 # Get the directory where the executable is running
@@ -34,10 +36,11 @@ def create_default_env(path):
     Creates a .env file with default values if it does not exist.
     """
     if not os.path.exists(path):
-        print("'.env' file not found. Creating a default file.")
+        print("Configuration file not found. Creating a default file.")
         default_content = """# === Configuration ===
 DEBUG=False # Enable for logging
-DNS_RESOLVE=True # Resolve dns if ip fails
+DNS_RESOLVE=False # Resolve dns if ip fails
+CHECK_CERTIFICATE=True # SSL certificate check. This will be bypassed if DNS_RESOLVE=True
 ARIA2C=False # Try aria2c for faster downloads
 # SAVE_PATH=C:// # Download location
 FINGERPRINT=web96b793f8dcb6bf3c20 # Fake Fingerprint
@@ -54,9 +57,10 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 # --- Configuration ---
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 DEBUG = os.getenv("DEBUG", False).lower() in ("true")
-DNS_RESOLVE = os.getenv("DNS_RESOLVE", True).lower() in ("true")
+DNS_RESOLVE = os.getenv("DNS_RESOLVE", False).lower() in ("true")
+CHECK_CERTIFICATE = False if DNS_RESOLVE else os.getenv("DNS_RESOLVE", False).lower() in ("true")
 ARIA2C = os.getenv("ARIA2C", True).lower() in ("true")
 SAVE_PATH = os.getenv("SAVE_PATH", os.path.join(os.path.expanduser("~"), "Desktop", "Belet"))
 FINGERPRINT = os.getenv("FINGERPRINT", "web96b793f8dcb6bf3c20")
@@ -70,36 +74,10 @@ VIDEOFILM_BELET = "videofilm.belet.me"
 DOWNLOADFILM_BELET = "downloadfilm.belet.me"
 
 MAIN_URLS = {
-    FILM_BELET: [
-        "119.235.120.106",
-        "119.235.120.103",
-        "119.235.120.105",
-        "119.235.120.107",
-        "119.235.120.100",
-        "119.235.120.101",
-    ],
-    FILM_BELETAPIS: [
-        "95.85.127.156",
-        "119.235.120.118",
-        "119.235.120.119",
-        "119.235.120.123",
-        "95.85.127.157",
-    ],
-    API_BELET: [
-        "119.235.120.118",
-        "95.85.127.156",
-        "119.235.120.119",
-        "119.235.120.123",
-        "95.85.127.157",
-    ],
-    DOWNLOADFILM_BELET: [
-        "119.235.120.106",
-        "119.235.120.107",
-        "119.235.120.100",
-        "119.235.120.103",
-        "119.235.120.105",
-        "119.235.120.101",
-    ],
+    FILM_BELET: ["119.235.120.106", "119.235.120.103", "119.235.120.105", "119.235.120.107", "119.235.120.100", "119.235.120.101"],
+    FILM_BELETAPIS: ["95.85.127.156", "119.235.120.118", "119.235.120.119", "119.235.120.123", "95.85.127.157"],
+    API_BELET: ["119.235.120.118", "95.85.127.156", "119.235.120.119", "119.235.120.123", "95.85.127.157"],
+    DOWNLOADFILM_BELET: ["119.235.120.106", "119.235.120.107", "119.235.120.100", "119.235.120.103", "119.235.120.105", "119.235.120.101"],
 }
 
 BASE_HEADER = {
@@ -153,7 +131,7 @@ HEADERS_CHECK = {
     **{
         "Content-Length": "174",
         "Content-Type": "application/json",
-        "Cookie": f"fingerprint={FINGERPRINT};",  # _ga=GA1.1.1541636591.1753466221; ph_phc_q0IYU1JS8LgRvdYL8vORaCjj8izJSvsydRqILHXqYSH_posthog=%7B%22distinct_id%22%3A%22345289%22%2C%22%24sesid%22%3A%5Bnull%2Cnull%2Cnull%5D%2C%22%24epp%22%3Atrue%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22https%3A%2F%2Fwww.google.com%2F%22%2C%22u%22%3A%22https%3A%2F%2Ffilm.belet.tm%2Flogin%3FbackUrl%3D%252F%22%7D%7D; _ga_SE5MHC8KCY=GS2.1.s1755854145$o17$g1$t1755854213$j60$l0$h0",
+        "Cookie": f"fingerprint={FINGERPRINT};",
         "Host": API_BELET,
         "Lang": "ru",
         "Origin": f"https://{FILM_BELET}",
@@ -196,7 +174,7 @@ HEADERS_SOURCE = {
 }
 
 
-class Source:
+class Sources:
     def __init__(self):
         self.videos = {}
 
@@ -210,6 +188,50 @@ class Source:
         return self.videos.get(quality)
 
 
+class Episode:
+
+    def __init__(self, last_watch, sources, id, type_id, parent_id, name, duration, image):
+        self.last_watch = last_watch
+        self.sources = sources
+        self.id = id
+        self.type_id = type_id
+        self.parent_id = parent_id
+        self.name = name
+        self.duration = duration
+        self.image = image
+
+    @classmethod
+    def fromMap(cls, episode_map, sources_list):
+        return cls(
+            last_watch=episode_map.get("last_watch"),
+            sources=sources_list,
+            id=episode_map.get("id"),
+            type_id=episode_map.get("type_id"),
+            parent_id=episode_map.get("parent_id"),
+            name=episode_map.get("name"),
+            duration=episode_map.get("duration"),
+            image=episode_map.get("image"),
+        )
+
+
+class Source:
+
+    def __init__(self, filename, download_url, type, quality):
+        self.filename = filename
+        self.download_url = download_url
+        self.type = type
+        self.quality = quality
+
+    @classmethod
+    def fromMap(cls, source_map):
+        return cls(
+            filename=source_map.get("filename"),
+            download_url=source_map.get("download_url"),
+            type=source_map.get("type"),
+            quality=source_map.get("quality"),
+        )
+
+
 def welcomeMessage():
     """Prints a welcome banner and information about the downloader."""
     print("=======================================")
@@ -219,6 +241,34 @@ def welcomeMessage():
     print("It automatically handles video, audio, and subtitle streams.")
     print(f"Running on console version: {VERSION}")
     print("=======================================\n")
+
+
+def initDir():
+    if not os.path.exists(SAVE_PATH):
+        debugPrint(f"Creating download directory: {SAVE_PATH}")
+        os.makedirs(SAVE_PATH)
+    else:
+        debugPrint(f"Download directory already exists: {SAVE_PATH}")
+
+
+def debugPrint(debugMessage, message=""):
+    if DEBUG:
+        print(debugMessage)
+    else:
+        print(message)
+
+
+def resolveHost(host):
+    return MAIN_URLS[host][0] if DNS_RESOLVE else host
+
+
+def resolveUrl(url):
+    return url
+    """
+    This lines are deprecated for now
+    host = urlparse(url).netloc
+    return url.replace(host, resolveHost(host))
+    """
 
 
 def updateEnv(key, value):
@@ -251,29 +301,37 @@ def updateEnv(key, value):
     debugPrint(f"Updated .env file: \n{key}: {value}")
 
 
-def getUrl(host):
-    if DNS_RESOLVE:
-        return MAIN_URLS[host][0]
-    return host
+def login():
+    url = f"https://{resolveHost(API_BELET)}/api/v1/auth/sign-in?sign_in_type=1"
+    headers = HEADERS_LOGIN
+    print("Enter phone number to login")
+    phone = input("Phone number: +993-")
+    payload = {"phone": int("993" + phone)}
+    try:
+        response = requests.post(url, headers=headers, json=payload, verify=CHECK_CERTIFICATE)
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        return check(response.json()["token"])
+    except requests.exceptions.RequestException as e:
+        debugPrint(f"Error login: {e}", "Something went wrong trying again")
+        login()
+        return None
 
 
 def check(token):
     global AUTHORIZATION_TOKEN
     global REFRESH_TOKEN
-    url = f"https://{getUrl(API_BELET)}/api/v1/auth/check-code"
+    url = f"https://{resolveHost(API_BELET)}/api/v1/auth/check-code"
     headers = HEADERS_CHECK
     print("Enter 5 digit verification code")
     code = input("Code: ")
     payload = {"code": code, "token": token}
     try:
-        response = requests.post(url, headers=headers, json=payload, verify=False)
+        response = requests.post(url, headers=headers, json=payload, verify=CHECK_CERTIFICATE)
         response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
         AUTHORIZATION_TOKEN = response.json()["token"]
         updateEnv("AUTHORIZATION_TOKEN", AUTHORIZATION_TOKEN)
         set_cookie_headers = response.headers.get("Set-Cookie")
         if set_cookie_headers:
-            # You might need to parse the string to extract specific cookies like RefreshToken
-            # Libraries like 'http.cookies' can be helpful for more complex parsing
             cookies_parser = SimpleCookie()
             cookies_parser.load(set_cookie_headers)
             if "RefreshToken" in cookies_parser:
@@ -284,38 +342,20 @@ def check(token):
             debugPrint("No Set-Cookie header found in the response.")
         return AUTHORIZATION_TOKEN
     except requests.exceptions.RequestException as e:
-        debugPrint(f"Error check code: {e}")
-        print("Something went wrong trying again")
+        debugPrint(f"Error check code: {e}", "Something went wrong trying again")
         check(token)
         return None
 
 
-def login():
-    url = f"https://{getUrl(API_BELET)}/api/v1/auth/sign-in?sign_in_type=1"
-    headers = HEADERS_LOGIN
-    print("Enter phone number to login")
-    phone = input("Phone number: +993-")
-    payload = {"phone": int("993" + phone)}
-    try:
-        response = requests.post(url, headers=headers, json=payload, verify=False)
-        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
-        return check(response.json()["token"])
-    except requests.exceptions.RequestException as e:
-        debugPrint(f"Error login: {e}")
-        print("Something went wrong trying again")
-        login()
-        return None
-
-
-def obtainNewToken():
+def refreshToken():
     """Obtains a new authorization token from the API."""
     debugPrint("Obtaining new Token...")
-    url = f"https://{getUrl(API_BELET)}/api/v1/auth/refresh"
+    url = f"https://{resolveHost(API_BELET)}/api/v1/auth/refresh"
     headers = HEADERS_TOKEN
     token = REFRESH_TOKEN if REFRESH_TOKEN else AUTHORIZATION_TOKEN
-    headers["Cookie"] = f"RefreshToken={token}; fingerprint={FINGERPRINT};"  # _ga=GA1.1.1541636591.1753466221; ph_phc_q0IYU1JS8LgRvdYL8vORaCjj8izJSvsydRqILHXqYSH_posthog=%7B%22distinct_id%22%3A%22345289%22%2C%22%24sesid%22%3A%5Bnull%2Cnull%2Cnull%5D%2C%22%24epp%22%3Atrue%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22https%3A%2F%2Fwww.google.com%2F%22%2C%22u%22%3A%22https%3A%2F%2Ffilm.belet.tm%2Flogin%3FbackUrl%3D%252F%22%7D%7D; _ga_SE5MHC8KCY=GS2.1.s1755777900$o13$g0$t1755777900$j60$l0$h0"
+    headers["Cookie"] = f"RefreshToken={token}; fingerprint={FINGERPRINT};"
     try:
-        response = requests.post(url, headers=headers, verify=False)
+        response = requests.post(url, headers=headers, verify=CHECK_CERTIFICATE)
         response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
         token = response.json()["token"]
         updateEnv("AUTHORIZATION_TOKEN", token)
@@ -326,26 +366,18 @@ def obtainNewToken():
         return None
 
 
-# Updated `download` function
-def download(
-    url,
-    output_file,
-    save_path=SAVE_PATH,
-):
-    print("\nDownload started...")
+def download(url, output_file, save_path=SAVE_PATH, main=True):
+    print("Download started...")
 
     def progress_hook(d):
         if d["status"] == "downloading":
             downloaded = d["_downloaded_bytes_str"]
             print(f"Downloaded: {downloaded}", end="\r")
         elif d["status"] == "finished":
-            print("\n")
-            print("Download finished.")
+            print("\nDownload finished.")
 
     ydl_opts = {
-        # This format string is designed to work with yt-dlp's merging logic
-        "format": "bestvideo+mergeall[vcodec=none]",
-        "allow_multiple_audio_streams": True,  # This flag is crucial for downloading all audio tracks
+        "allow_multiple_audio_streams": True,
         "merge_output_format": "mp4",
         "outtmpl": os.path.join(save_path, output_file),
         "quiet": not DEBUG,
@@ -354,91 +386,68 @@ def download(
         "writesubtitles": True,
         "writeautomaticsub": True,
         "subtitleslangs": ["all"],
-        "no_check_certificate": True,
-        "postprocessors": [
-            {
-                "key": "FFmpegEmbedSubtitle",
-            },
-        ],
+        "fragment_retries": 0,
+        "no_check_certificate": CHECK_CERTIFICATE,
+        "postprocessors": [{"key": "FFmpegEmbedSubtitle"}],
         "progress_hooks": [progress_hook] if DEBUG else [],
         "http_headers": HEADERS,
         "ffmpeg_location": FFMPEG_PATH,
     }
+    if main:
+        ydl_opts.update({"format": "bestvideo+mergeall[vcodec=none]"})
     if ARIA2C:
         ydl_opts.update(
             {
                 "external_downloader": ARIA2C_PATH,
-                "external_downloader_args": [
-                    "-x",
-                    "16",
-                    "-s",
-                    "16",
-                    "-k",
-                    "1M",
-                    "--check-certificate=false",
-                ],
+                "external_downloader_args": ["-x", "16", "-s", "16", "-k", "1M", f"--check-certificate={CHECK_CERTIFICATE.__str__().lower()}"],
             }
         )
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            ydl.download([resolveUrl(url)])
         print("\n🎉 Download successful!")
         print(f"File saved to: {os.path.join(save_path, output_file)}")
-
     except yt_dlp.utils.DownloadError as e:
-        print(f"\n❌ Error during download: {e}")
-        print("This often means the URL is invalid or the token has expired.")
+        debugPrint(f"\n❌ Error during download: {e}")
+        if "Requested format is not available" in str(e):
+            debugPrint("Trying with main=False")
+            download(url, output_file, save_path=save_path, main=False)
     except Exception as e:
-        print(f"\n❌ An unexpected error occurred: {e}")
+        debugPrint(f"\n❌ An unexpected error occurred: {e}", "\n❌ An unexpected error occurred cannot download")
 
 
-def getSources(video, typ=1):
-    url = f"https://{getUrl(FILM_BELETAPIS)}/api/v3/files/{video}?type={typ}"
+def getSources(videoId, typ=1):
+    url = f"https://{resolveHost(FILM_BELETAPIS)}/api/v3/files/{videoId}?type={typ}"
     headers = HEADERS_SOURCE
     headers["authorization"] = AUTHORIZATION_TOKEN
-    response = requests.get(url, headers=headers, verify=False)
+    response = requests.get(url, headers=headers, verify=CHECK_CERTIFICATE)
     if response.status_code == 200:
         data = response.json()
-        video_sources = Source()
-        for video_info in data.get("sources", []):
-            quality = video_info.get("quality")
-            filename = video_info.get("filename")
-            if quality and filename:
-                video_sources.addVideo(quality, filename)
-                debugPrint(f"Found source: {quality} at {filename}")
-        return video_sources
+        sources = []
+        for source in data["sources"]:
+            print(source)
+            sources.append(Source.fromMap(source))
+        return sources
     else:
         debugPrint(f"ERROR: Get Source Response Fail. Status code: {response.status_code}")
         debugPrint(f"Raw response: {response.text}")
-        obtainNewToken()
+        refreshToken()
         return None
 
 
-def initDir():
-    if not os.path.exists(SAVE_PATH):
-        debugPrint(f"Creating download directory: {SAVE_PATH}")
-        os.makedirs(SAVE_PATH)
-    else:
-        debugPrint(f"Download directory already exists: {SAVE_PATH}")
-
-
-def debugPrint(s):
-    if DEBUG:
-        print(s)
-
-
-# Updated `inputQuality` function
 def inputQuality(source):
     qualities = list(source.videos.keys())
     if not qualities:
         print("No qualities available for this video.")
         return None, None  # Return both URL and quality string
     print("\nAvailable qualities:")
-    for i, quality in enumerate(qualities):
-        print(f"{i}: {quality}")
+    quality = ""
+    for i, q in enumerate(qualities):
+        if i == 0:
+            quality = q
+        print(f"{i}: {q}")
     try:
-        inp = input("Enter quality index. Leave empty if 480p: ").strip()
+        inp = input(f"Enter quality index. Leave empty if {quality}: ").strip()
         index = int(inp) if inp != "" else 0
         if 0 <= index < len(qualities):
             selected_quality = qualities[index]
@@ -456,7 +465,67 @@ def inputQuality(source):
         return None, None
 
 
-def main():
+def getEpisodes(season_id):
+    url = f"https://{resolveHost(FILM_BELETAPIS)}/api/v2/episodes?seasonId={season_id}"
+    headers = HEADERS_SOURCE
+    headers["authorization"] = AUTHORIZATION_TOKEN
+    try:
+        response = requests.get(url, headers=headers, verify=CHECK_CERTIFICATE)
+        if response.status_code == 200:
+            data = response.json()
+            episodes = []
+            for episode in data["episodes"]:
+                sources = []
+                for source in episode["sources"]:
+                    sources.append(Source.fromMap(source))
+                episodes.append(Episode.fromMap(episode, sources))
+            return episodes
+        else:
+            debugPrint(f"ERROR: Get Season Response Fail. Status code: {response.status_code}")
+            debugPrint(f"Raw response: {response.text}")
+            refreshToken()
+    except Exception as e:
+        debugPrint(f"Error: {e}")
+    return None
+
+
+def inputOption():
+    print("Enter download option")
+    print("0: Episode")
+    print("1: Season")
+    option = input("Option: ")
+    if option == "1":
+        return 1
+    return 0
+
+
+def inputQ(sources):
+    qualities = []
+    for source in sources:
+        qualities.append(source.quality)
+    if not qualities:
+        print("No qualities available for this video.")
+        return None
+    print("\nAvailable qualities:")
+    for i, quality in enumerate(qualities):
+        print(f"{i}: {quality}")
+    try:
+        inp = input(f"Enter quality index. Leave empty if {qualities[0]}: ").strip()
+        index = int(inp) if inp != "" else 0
+        if 0 <= index < len(qualities):
+            return qualities[index]
+        else:
+            print("Invalid index. Please enter a number from the list.")
+            return inputQ(sources)
+    except ValueError:
+        print("Invalid input. Please enter a number.")
+        return inputQ(sources)
+    except Exception as e:
+        debugPrint(f"ERROR in inputQuality: {e}")
+        return None
+
+
+def initCredentials():
     global AUTHORIZATION_TOKEN
     if not FINGERPRINT:
         print("Set FINGERPRINT in .env. Aborting")
@@ -466,24 +535,53 @@ def main():
         login()
     if not AUTHORIZATION_TOKEN:
         debugPrint("AUTHORIZATION_TOKEN: " + AUTHORIZATION_TOKEN)
-        AUTHORIZATION_TOKEN = obtainNewToken()
-    video = input("Enter video number: ")
-    source = getSources(video)
-    if source and source.videos:
-        # Get both the url and the quality string from the function
-        url, quality_string = inputQuality(source)
-        if url and quality_string:
-            debugPrint(f"Selected URL: {url}")
-            dynamic_output_file = f"{video}_{quality_string}.mp4"
-            download(
-                url=url,
-                save_path=os.path.join(SAVE_PATH, f"{video}_{quality_string}"),
-                output_file=dynamic_output_file,
-            )
+        AUTHORIZATION_TOKEN = refreshToken()
+
+
+def getUrlFromSources(quality, sources):
+    for source in sources:
+        if quality == source.quality:
+            debugPrint(f"Found desired quality: {quality}")
+            return source.filename
+    if len(sources) > 0:
+        debugPrint(f"Desired quality not found using: {sources[0].quality}")
+        return sources[0].filename
+    debugPrint("Not source found")
+    return None
+
+
+def main():
+    if inputOption() == 1:
+        seasonId = input("Enter season number: ")
+        episodes = getEpisodes(seasonId)
+        if episodes:
+            quality = inputQ(episodes[0].sources)
+            for episode in episodes:
+                try:
+                    download(
+                        url=getUrlFromSources(quality, episode.sources),
+                        save_path=os.path.join(SAVE_PATH, "Seasons", f"{seasonId}"),
+                        output_file=f"{episode.name}_{quality}.mp4",
+                    )
+                except Exception as e:
+                    debugPrint(f"Error downloading {episode.name}.\n{e}", f"Something went wrong while downloading {episode.name}. Skipping")
         else:
-            print("No URL selected. Exiting.")
+            print("Something went wrong! Episodes not found.")
     else:
-        debugPrint("Failed to retrieve sources or no sources available.")
+        videoId = input("Enter video number: ")
+        sources = getSources(videoId)
+        if sources:
+            quality = inputQ(sources)
+            try:
+                download(
+                    url=getUrlFromSources(quality, sources),
+                    save_path=os.path.join(SAVE_PATH, "Videos", f"{videoId}"),
+                    output_file=f"{videoId}_{quality}.mp4",
+                )
+            except Exception as e:
+                debugPrint(f"Error downloading {videoId}\n{e}", f"Something went wrong while downloading {videoId}. Skipping")
+        else:
+            debugPrint("Failed to retrieve sources or no sources available.")
     main()
 
 
@@ -491,4 +589,5 @@ def main():
 if __name__ == "__main__":
     welcomeMessage()
     initDir()
+    initCredentials()
     main()

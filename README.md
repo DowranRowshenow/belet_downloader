@@ -52,15 +52,14 @@ You need to have `FFmpeg` and `aria2c` installed on your system. These are exter
 
     ```
     # === Configuration ===
-    DEBUG=False
-    DNS_RESOLVE=True
-    ARIA2C=True
+    DEBUG=False # Enable for logging
+    DNS_RESOLVE=False # Enable for dns resolve issues
+    CHECK_CERTIFICATE=True # Disable for SSL certificate errors
+    ARIA2C=False # Use aria2c for faster downloads
     SAVE_PATH="/path/to/your/download/folder" # e.g., C:\Users\YourUser\Desktop\Belet
     FINGERPRINT= # Your Belet.tm fingerprint (leave empty to prompt for login)
     AUTHORIZATION_TOKEN= # Automatically updated after login
     REFRESH_TOKEN= # Automatically updated after login
-
-
     ```
 
     * **`FINGERPRINT`**: This is a unique identifier for your device. If left empty, the script will prompt you to log in via phone number to obtain one.
@@ -70,6 +69,8 @@ You need to have `FFmpeg` and `aria2c` installed on your system. These are exter
     * **`DEBUG`**: Set to `True` for verbose output and to enable the download progress hook.
 
     * **`DNS_RESOLVE`**: Set to `True` to use the pre-defined IP addresses for Belet.tm domains.
+
+    * **`CHECK_CERTIFICATE`**: Set to `False` to bypass SSL Certificate errors.
 
     * **`ARIA2C`**: Set to `True` to enable `aria2c` as the external downloader for faster downloads.
 4.  **Install and set path**:

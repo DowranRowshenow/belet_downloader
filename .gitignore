@@ -6,7 +6,7 @@ bin/
 # Build files
 dist/
 build/
-BeletDownloader.spec
+*.spec
 
 # Linter
 pyproject.toml
