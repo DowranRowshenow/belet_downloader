@@ -7,6 +7,11 @@ bin/
 dist/
 build/
 *.spec
+downloader.dist/
+*.build/
+*.dist/
+*-build/
+*.exe
 
 # Linter
 pyproject.toml

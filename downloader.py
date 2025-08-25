@@ -3,69 +3,124 @@ import sys
 import yt_dlp
 import requests
 import urllib3
-
-# from urllib.parse import urlparse
 from dotenv import load_dotenv
 from http.cookies import SimpleCookie
 
 
-# Get the directory where the executable is running
-if getattr(sys, "frozen", False):
-    application_path = os.path.dirname(sys.executable)
-    # Running from a PyInstaller bundle
-    BUNDLE_ROOT = sys._MEIPASS
-    BIN_DIR = os.path.join(BUNDLE_ROOT, "bin")
-else:
-    application_path = os.path.dirname(os.path.abspath(__file__))
-    # Running as a standard Python script (development)
-    # You can set a specific bin directory here or rely on system PATH
-    BUNDLE_ROOT = os.path.dirname(os.path.abspath(__file__))
-    BIN_DIR = os.path.join(BUNDLE_ROOT, "bin")  # Or an empty string to rely on PATH
+# Define a dictionary of default values to check against
+DEFAULT_CONFIG = {
+    "DEBUG": "False",
+    "DNS_RESOLVE": "False",
+    "CHECK_CERTIFICATE": "True",
+    "ARIA2C": "False",
+    "SAVE_PATH": "None",
+    "FINGERPRINT": "web84b041g6ekl5ce4a19",
+    "AUTHORIZATION_TOKEN": "None",
+    "REFRESH_TOKEN": "None",
+}
 
-# Explicitly set the paths to the bundled executables
-# If they don't exist in BIN_DIR (e.g., in dev env), fallback to just the command name
-FFMPEG_PATH = os.path.join(BIN_DIR, "ffmpeg.exe").__str__() if os.path.exists(os.path.join(BIN_DIR, "ffmpeg.exe")) else "ffmpeg"
-ARIA2C_PATH = os.path.join(BIN_DIR, "aria2c.exe").__str__() if os.path.exists(os.path.join(BIN_DIR, "aria2c.exe")) else "aria2c"
-# Now tell load_dotenv() to look for the .env file in that specific directory
-dotenv_path = os.path.join(application_path, ".env")
+
+def debugPrint(debugMessage, message=None):
+    try:
+        debug_mode = DEBUG
+    except NameError:
+        debug_mode = False
+
+    if debug_mode:
+        print(debugMessage)
+    elif message:
+        print(message)
+
+
+def updateEnv(key, value):
+    """
+    Updates or adds a key-value pair in a .env file.
+    If the key exists, its value is updated. If not, the pair is added.
+    """
+    # Check if the .env file exists
+    if not os.path.exists(DOTENV_PATH):
+        with open(DOTENV_PATH, "w") as f:
+            f.write(f"{key}={value}\n")
+        return
+    lines = []
+    found = False
+    with open(DOTENV_PATH, "r") as f:
+        for line in f:
+            if line.strip().startswith(f"{key}="):
+                # Update the line if the key is found
+                lines.append(f"{key}={value}\n")
+                found = True
+            else:
+                lines.append(line)
+    # If the key was not found, add it to the end
+    if not found:
+        lines.append(f"{key}={value}\n")
+    # Write all the content back to the file
+    with open(DOTENV_PATH, "w") as f:
+        f.writelines(lines)
+    debugPrint(f"Updated .env file: \n{key}: {value}")
 
 
 # Create default .env file before attempting to load it
-def create_default_env(path):
-    """
-    Creates a .env file with default values if it does not exist.
-    """
-    if not os.path.exists(path):
+def create_default_env():
+    global ENV, DOTENV_PATH, BIN_DIR
+    # Get the directory where the executable is running
+    if getattr(sys, "frozen", False):
+        # Running from a PyInstaller bundle
+        application_path = os.path.dirname(sys.executable)
+        BIN_DIR = os.path.join(sys._MEIPASS, "bin")
+        ENV = "PyInstaller"
+        DOTENV_PATH = os.path.join(application_path, ".env")
+    elif "__compiled__" in globals():
+        # Running from a Nuitka bundle
+        application_path = os.path.dirname(os.path.abspath(__file__))
+        BIN_DIR = os.path.join(application_path, "bin")
+        ENV = "Nuitka"
+        DOTENV_PATH = os.path.join(os.path.dirname(sys.executable), ".env")
+    else:
+        # Running as a standard Python script (development)
+        application_path = os.path.dirname(os.path.abspath(__file__))
+        BIN_DIR = os.path.join(application_path, "bin")
+        ENV = "Script"
+        DOTENV_PATH = os.path.join(application_path, ".env")
+
+    # Check if the .env file exists; if not, create it with all defaults
+    if not os.path.exists(DOTENV_PATH):
         print("Configuration file not found. Creating a default file.")
-        default_content = """# === Configuration ===
-DEBUG=False # Enable for logging
-DNS_RESOLVE=False # Resolve dns if ip fails
-CHECK_CERTIFICATE=True # SSL certificate check. This will be bypassed if DNS_RESOLVE=True
-ARIA2C=False # Try aria2c for faster downloads
-# SAVE_PATH=C:// # Download location
-FINGERPRINT=web96b793f8dcb6bf3c20 # Fake Fingerprint
-AUTHORIZATION_TOKEN=None # Authorization token
-REFRESH_TOKEN=None # Refresh token
-"""
-        with open(path, "w") as f:
-            f.write(default_content)
+        with open(DOTENV_PATH, "w") as f:
+            f.write("# === Configuration ===\n")
+            for key, value in DEFAULT_CONFIG.items():
+                f.write(f"{key}={value}\n")
+        load_dotenv(dotenv_path=DOTENV_PATH)
+    else:
+        # If the file exists, load it and check for missing keys
+        load_dotenv(dotenv_path=DOTENV_PATH)
+        for key, value in DEFAULT_CONFIG.items():
+            # If the key is not in the environment variables, add it to the file
+            if os.getenv(key) is None:
+                updateEnv(key, value)
+                print(f"Added missing configuration key: {key}")
 
 
-create_default_env(dotenv_path)
-load_dotenv()
+def getDotEnv(key):
+    return os.getenv(key, DEFAULT_CONFIG[key])
+
+
+create_default_env()
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-
 # --- Configuration ---
+FFMPEG_PATH = os.path.join(BIN_DIR, "ffmpeg.exe").__str__() if os.path.exists(os.path.join(BIN_DIR, "ffmpeg.exe")) else "ffmpeg"
+ARIA2C_PATH = os.path.join(BIN_DIR, "aria2c.exe").__str__() if os.path.exists(os.path.join(BIN_DIR, "aria2c.exe")) else "aria2c"
 VERSION = "1.0.1"
-DEBUG = os.getenv("DEBUG", False).lower() in ("true")
-DNS_RESOLVE = os.getenv("DNS_RESOLVE", False).lower() in ("true")
-CHECK_CERTIFICATE = False if DNS_RESOLVE else os.getenv("DNS_RESOLVE", False).lower() in ("true")
-ARIA2C = os.getenv("ARIA2C", True).lower() in ("true")
-SAVE_PATH = os.getenv("SAVE_PATH", os.path.join(os.path.expanduser("~"), "Desktop", "Belet"))
-FINGERPRINT = os.getenv("FINGERPRINT", "web96b793f8dcb6bf3c20")
-AUTHORIZATION_TOKEN = os.getenv("AUTHORIZATION_TOKEN", None)
-REFRESH_TOKEN = os.getenv("REFRESH_TOKEN", None)
+DEBUG = getDotEnv("DEBUG").lower() in ("true")
+DNS_RESOLVE = getDotEnv("DNS_RESOLVE").lower() in ("true")
+CHECK_CERTIFICATE = False if DNS_RESOLVE else getDotEnv("CHECK_CERTIFICATE").lower() in ("true")
+ARIA2C = getDotEnv("ARIA2C").lower() in ("true")
+SAVE_PATH = getDotEnv("SAVE_PATH")
+SAVE_PATH = os.path.join(os.path.expanduser("~"), "Desktop", "Belet") if SAVE_PATH.lower() == "none" else SAVE_PATH
+FINGERPRINT = getDotEnv("FINGERPRINT")
+AUTHORIZATION_TOKEN = getDotEnv("AUTHORIZATION_TOKEN")
+REFRESH_TOKEN = getDotEnv("REFRESH_TOKEN")
 
 FILM_BELETAPIS = "film.beletapis.com"
 FILM_BELET = "film.belet.tm"
@@ -174,20 +229,6 @@ HEADERS_SOURCE = {
 }
 
 
-class Sources:
-    def __init__(self):
-        self.videos = {}
-
-    def addVideo(self, quality, url):
-        self.videos[quality] = url
-
-    def get_qualities(self):
-        return list(self.videos.keys())
-
-    def get_url_by_quality(self, quality):
-        return self.videos.get(quality)
-
-
 class Episode:
 
     def __init__(self, last_watch, sources, id, type_id, parent_id, name, duration, image):
@@ -232,32 +273,6 @@ class Source:
         )
 
 
-def welcomeMessage():
-    """Prints a welcome banner and information about the downloader."""
-    print("=======================================")
-    print("       Belet Film Video Downloader       ")
-    print("=======================================")
-    print("🚀 This script downloads videos from film.belet.tm")
-    print("It automatically handles video, audio, and subtitle streams.")
-    print(f"Running on console version: {VERSION}")
-    print("=======================================\n")
-
-
-def initDir():
-    if not os.path.exists(SAVE_PATH):
-        debugPrint(f"Creating download directory: {SAVE_PATH}")
-        os.makedirs(SAVE_PATH)
-    else:
-        debugPrint(f"Download directory already exists: {SAVE_PATH}")
-
-
-def debugPrint(debugMessage, message=""):
-    if DEBUG:
-        print(debugMessage)
-    else:
-        print(message)
-
-
 def resolveHost(host):
     return MAIN_URLS[host][0] if DNS_RESOLVE else host
 
@@ -269,36 +284,6 @@ def resolveUrl(url):
     host = urlparse(url).netloc
     return url.replace(host, resolveHost(host))
     """
-
-
-def updateEnv(key, value):
-    """
-    Updates or adds a key-value pair in a .env file.
-    If the key exists, its value is updated. If not, the pair is added.
-    """
-    env_path = ".env"
-    # Check if the .env file exists
-    if not os.path.exists(env_path):
-        with open(env_path, "w") as f:
-            f.write(f"{key}={value}\n")
-        return
-    lines = []
-    found = False
-    with open(env_path, "r") as f:
-        for line in f:
-            if line.strip().startswith(f"{key}="):
-                # Update the line if the key is found
-                lines.append(f"{key}={value}\n")
-                found = True
-            else:
-                lines.append(line)
-    # If the key was not found, add it to the end
-    if not found:
-        lines.append(f"{key}={value}\n")
-    # Write all the content back to the file
-    with open(env_path, "w") as f:
-        f.writelines(lines)
-    debugPrint(f"Updated .env file: \n{key}: {value}")
 
 
 def login():
@@ -318,8 +303,7 @@ def login():
 
 
 def check(token):
-    global AUTHORIZATION_TOKEN
-    global REFRESH_TOKEN
+    global AUTHORIZATION_TOKEN, REFRESH_TOKEN
     url = f"https://{resolveHost(API_BELET)}/api/v1/auth/check-code"
     headers = HEADERS_CHECK
     print("Enter 5 digit verification code")
@@ -352,7 +336,7 @@ def refreshToken():
     debugPrint("Obtaining new Token...")
     url = f"https://{resolveHost(API_BELET)}/api/v1/auth/refresh"
     headers = HEADERS_TOKEN
-    token = REFRESH_TOKEN if REFRESH_TOKEN else AUTHORIZATION_TOKEN
+    token = REFRESH_TOKEN if REFRESH_TOKEN or str(REFRESH_TOKEN).lower() != "none" else AUTHORIZATION_TOKEN
     headers["Cookie"] = f"RefreshToken={token}; fingerprint={FINGERPRINT};"
     try:
         response = requests.post(url, headers=headers, verify=CHECK_CERTIFICATE)
@@ -366,6 +350,44 @@ def refreshToken():
         return None
 
 
+def welcomeMessage():
+    """Prints a welcome banner and information about the downloader."""
+    print("=======================================")
+    print("       Belet Film Video Downloader       ")
+    print("=======================================")
+    print("🚀 This script downloads videos from film.belet.tm")
+    print("It automatically handles video, audio, and subtitle streams.")
+    print(f"Running on console version: {VERSION}")
+    print("=======================================")
+
+
+def initDir():
+    debugPrint(f"Running on {ENV}")
+    debugPrint(f"BIN_DIR: {BIN_DIR}")
+    debugPrint(f"EXE_DIR: {os.path.dirname(sys.executable)}")
+    debugPrint(f"FFMPEG: {FFMPEG_PATH}")
+    debugPrint(f"ARIA2C: {ARIA2C_PATH}")
+    debugPrint(f"DOTENV: {DOTENV_PATH}")
+    if not os.path.exists(SAVE_PATH):
+        debugPrint(f"Creating download directory: {SAVE_PATH}")
+        os.makedirs(SAVE_PATH)
+    else:
+        debugPrint(f"Download directory already exists: {SAVE_PATH}")
+
+
+def initCredentials():
+    global AUTHORIZATION_TOKEN
+    if not FINGERPRINT:
+        print("Set FINGERPRINT in .env file. Aborting")
+        return
+    if not REFRESH_TOKEN or str(REFRESH_TOKEN).lower() == "none":
+        debugPrint("REFRESH_TOKEN: " + str(REFRESH_TOKEN))
+        login()
+    if not AUTHORIZATION_TOKEN or str(AUTHORIZATION_TOKEN).lower() == "none":
+        debugPrint("AUTHORIZATION_TOKEN: " + AUTHORIZATION_TOKEN)
+        AUTHORIZATION_TOKEN = refreshToken()
+
+
 def download(url, output_file, save_path=SAVE_PATH, main=True):
     print("Download started...")
 
@@ -375,6 +397,9 @@ def download(url, output_file, save_path=SAVE_PATH, main=True):
             print(f"Downloaded: {downloaded}", end="\r")
         elif d["status"] == "finished":
             print("\nDownload finished.")
+
+    headers = HEADERS
+    headers["authorization"] = AUTHORIZATION_TOKEN
 
     ydl_opts = {
         "allow_multiple_audio_streams": True,
@@ -386,11 +411,13 @@ def download(url, output_file, save_path=SAVE_PATH, main=True):
         "writesubtitles": True,
         "writeautomaticsub": True,
         "subtitleslangs": ["all"],
-        "fragment_retries": 0,
+        "fragment_retries": 10**10,
+        "retries": 10**10,
+        "socket_timeout": 60 * 60 * 24,
         "no_check_certificate": CHECK_CERTIFICATE,
         "postprocessors": [{"key": "FFmpegEmbedSubtitle"}],
         "progress_hooks": [progress_hook] if DEBUG else [],
-        "http_headers": HEADERS,
+        "http_headers": headers,
         "ffmpeg_location": FFMPEG_PATH,
     }
     if main:
@@ -399,7 +426,16 @@ def download(url, output_file, save_path=SAVE_PATH, main=True):
         ydl_opts.update(
             {
                 "external_downloader": ARIA2C_PATH,
-                "external_downloader_args": ["-x", "16", "-s", "16", "-k", "1M", f"--check-certificate={CHECK_CERTIFICATE.__str__().lower()}"],
+                "external_downloader_args": [
+                    "-x",
+                    "16",
+                    "-s",
+                    "16",
+                    "-k",
+                    "1M",
+                    "--timeout=300",
+                    f"--check-certificate={CHECK_CERTIFICATE.__str__().lower()}",
+                ],
             }
         )
     try:
@@ -433,36 +469,6 @@ def getSources(videoId, typ=1):
         debugPrint(f"Raw response: {response.text}")
         refreshToken()
         return None
-
-
-def inputQuality(source):
-    qualities = list(source.videos.keys())
-    if not qualities:
-        print("No qualities available for this video.")
-        return None, None  # Return both URL and quality string
-    print("\nAvailable qualities:")
-    quality = ""
-    for i, q in enumerate(qualities):
-        if i == 0:
-            quality = q
-        print(f"{i}: {q}")
-    try:
-        inp = input(f"Enter quality index. Leave empty if {quality}: ").strip()
-        index = int(inp) if inp != "" else 0
-        if 0 <= index < len(qualities):
-            selected_quality = qualities[index]
-            url = source.videos[selected_quality]
-            # Return both the URL and the selected quality string
-            return url, selected_quality
-        else:
-            print("Invalid index. Please enter a number from the list.")
-            return inputQuality(source)
-    except ValueError:
-        print("Invalid input. Please enter a number.")
-        return inputQuality(source)
-    except Exception as e:
-        debugPrint(f"ERROR in inputQuality: {e}")
-        return None, None
 
 
 def getEpisodes(season_id):
@@ -499,7 +505,7 @@ def inputOption():
     return 0
 
 
-def inputQ(sources):
+def inputQuality(sources):
     qualities = []
     for source in sources:
         qualities.append(source.quality)
@@ -516,26 +522,13 @@ def inputQ(sources):
             return qualities[index]
         else:
             print("Invalid index. Please enter a number from the list.")
-            return inputQ(sources)
+            return inputQuality(sources)
     except ValueError:
         print("Invalid input. Please enter a number.")
-        return inputQ(sources)
+        return inputQuality(sources)
     except Exception as e:
         debugPrint(f"ERROR in inputQuality: {e}")
         return None
-
-
-def initCredentials():
-    global AUTHORIZATION_TOKEN
-    if not FINGERPRINT:
-        print("Set FINGERPRINT in .env. Aborting")
-        return
-    if not REFRESH_TOKEN:
-        debugPrint("REFRESH_TOKEN: " + REFRESH_TOKEN)
-        login()
-    if not AUTHORIZATION_TOKEN:
-        debugPrint("AUTHORIZATION_TOKEN: " + AUTHORIZATION_TOKEN)
-        AUTHORIZATION_TOKEN = refreshToken()
 
 
 def getUrlFromSources(quality, sources):
@@ -555,7 +548,7 @@ def main():
         seasonId = input("Enter season number: ")
         episodes = getEpisodes(seasonId)
         if episodes:
-            quality = inputQ(episodes[0].sources)
+            quality = inputQuality(episodes[0].sources)
             for episode in episodes:
                 try:
                     download(
@@ -571,7 +564,7 @@ def main():
         videoId = input("Enter video number: ")
         sources = getSources(videoId)
         if sources:
-            quality = inputQ(sources)
+            quality = inputQuality(sources)
             try:
                 download(
                     url=getUrlFromSources(quality, sources),
